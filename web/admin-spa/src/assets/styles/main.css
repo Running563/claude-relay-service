@@ -154,3 +154,8 @@ h6 {
     max-height: calc(85vh - 120px);
   }
 }
+
+.plr-8 {
+  padding-left: 8px;
+  padding-right: 8px;
+}

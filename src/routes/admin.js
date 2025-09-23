@@ -1,6 +1,7 @@
 const express = require('express')
 const apiKeyService = require('../services/apiKeyService')
 const claudeAccountService = require('../services/claudeAccountService')
+const requestHistoryService = require('../services/requestHistoryService')
 const claudeConsoleAccountService = require('../services/claudeConsoleAccountService')
 const bedrockAccountService = require('../services/bedrockAccountService')
 const ccrAccountService = require('../services/ccrAccountService')
@@ -7451,6 +7452,207 @@ router.post('/openai-responses-accounts/:id/reset-usage', authenticateAdmin, asy
     res.status(500).json({
       success: false,
       error: error.message
+    })
+  }
+})
+
+// 📊 请求历史管理（管理员专用）
+
+// 获取所有请求历史（支持筛选）
+router.get('/request-history', authenticateAdmin, async (req, res) => {
+  try {
+    const { apiKeyId, startTime, endTime, limit = 50, offset = 0 } = req.query
+
+    // API Key ID 是必需的
+    if (!apiKeyId) {
+      return res.status(400).json({
+        success: false,
+        error: 'API Key ID is required',
+        message: 'Please specify an API Key ID to view request history'
+      })
+    }
+
+    const options = {
+      apiKeyId,
+      startTime,
+      endTime,
+      limit: Math.min(parseInt(limit), 1000), // 最大1000条
+      offset: parseInt(offset)
+    }
+
+    const history = await requestHistoryService.getRequestHistory(options)
+
+    res.json({
+      success: true,
+      data: {
+        history,
+        pagination: {
+          limit: parseInt(limit),
+          offset: parseInt(offset),
+          hasMore: history.length === parseInt(limit)
+        },
+        filters: { apiKeyId, startTime, endTime }
+      }
+    })
+  } catch (error) {
+    logger.error('❌ Admin request history error:', error)
+    res.status(500).json({
+      success: false,
+      error: 'Failed to get request history',
+      message: error.message
+    })
+  }
+})
+
+// 获取请求历史配置
+router.get('/request-history/config', authenticateAdmin, async (req, res) => {
+  try {
+    const data = await requestHistoryService.getCurrentConfig()
+    res.json({
+      success: true,
+      message: 'Request history configuration retrieved',
+      data
+    })
+  } catch (error) {
+    logger.error('❌ Admin config get error:', error)
+    res.status(500).json({
+      success: false,
+      error: 'Failed to get configuration',
+      message: error.message
+    })
+  }
+})
+
+// 获取单个请求详情（管理员可查看所有）
+router.get('/request-history/:requestId', authenticateAdmin, async (req, res) => {
+  try {
+    const { requestId } = req.params
+    const requestDetails = await requestHistoryService.getRequestDetails(requestId)
+
+    if (!requestDetails) {
+      return res.status(404).json({
+        success: false,
+        error: 'Request not found',
+        message: 'The specified request ID was not found'
+      })
+    }
+
+    res.json({
+      success: true,
+      data: requestDetails
+    })
+  } catch (error) {
+    logger.error('❌ Admin request details error:', error)
+    res.status(500).json({
+      success: false,
+      error: 'Failed to get request details',
+      message: error.message
+    })
+  }
+})
+
+// 获取请求统计（管理员视图）
+router.get('/request-stats', authenticateAdmin, async (req, res) => {
+  try {
+    const { apiKeyId, startTime, endTime } = req.query
+
+    if (!apiKeyId) {
+      return res.status(400).json({
+        success: false,
+        error: 'API Key ID is required',
+        message: 'Please specify an API Key ID to view statistics'
+      })
+    }
+
+    const stats = await requestHistoryService.getRequestStats(apiKeyId, startTime, endTime)
+
+    res.json({
+      success: true,
+      data: {
+        stats,
+        filters: { apiKeyId, startTime, endTime }
+      }
+    })
+  } catch (error) {
+    logger.error('❌ Admin request stats error:', error)
+    res.status(500).json({
+      success: false,
+      error: 'Failed to get request statistics',
+      message: error.message
+    })
+  }
+})
+
+// 删除请求记录
+router.delete('/request-history/:requestId', authenticateAdmin, async (req, res) => {
+  try {
+    const { requestId } = req.params
+    const deleted = await requestHistoryService.deleteRequest(requestId)
+
+    if (!deleted) {
+      return res.status(404).json({
+        success: false,
+        error: 'Request not found',
+        message: 'The specified request ID was not found'
+      })
+    }
+
+    res.json({
+      success: true,
+      message: 'Request deleted successfully'
+    })
+  } catch (error) {
+    logger.error('❌ Admin delete request error:', error)
+    res.status(500).json({
+      success: false,
+      error: 'Failed to delete request',
+      message: error.message
+    })
+  }
+})
+
+// 请求历史配置管理
+router.put('/request-history/config', authenticateAdmin, async (req, res) => {
+  try {
+    const { enableLogging, maxRecordsPerKey, maxRequestBodySize, maxResponseBodySize } = req.body
+
+    // 构建配置对象
+    const newConfig = {}
+    if (enableLogging !== undefined) {
+      newConfig.enableHistoryLogging = enableLogging
+    }
+    if (maxRecordsPerKey !== undefined) {
+      newConfig.maxRecordsPerKey = Math.min(maxRecordsPerKey, 5000) // 最多5000条
+    }
+    if (maxRequestBodySize !== undefined) {
+      newConfig.maxRequestBodySize = maxRequestBodySize
+    }
+    if (maxResponseBodySize !== undefined) {
+      newConfig.maxResponseBodySize = maxResponseBodySize
+    }
+
+    // 使用新的updateConfig方法更新配置（会自动保存到Redis）
+    const updated = await requestHistoryService.updateConfig(newConfig)
+
+    if (updated) {
+      const currentConfig = await requestHistoryService.getCurrentConfig()
+      res.json({
+        success: true,
+        message: 'Request history configuration updated and saved to Redis',
+        data: currentConfig
+      })
+    } else {
+      res.status(500).json({
+        success: false,
+        error: 'Failed to save configuration to Redis'
+      })
+    }
+  } catch (error) {
+    logger.error('❌ Admin config update error:', error)
+    res.status(500).json({
+      success: false,
+      error: 'Failed to update configuration',
+      message: error.message
     })
   }
 })

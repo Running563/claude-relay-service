@@ -12,10 +12,13 @@ Claude Relay Service 是一个功能完整的 AI API 中转服务，支持 Claud
 
 ### 关键架构概念
 
-- **代理认证流**: 客户端用自建API Key → 验证 → 获取Claude账户OAuth token → 转发到Anthropic
+- **多平台支持**: 统一服务支持Claude、Gemini、OpenAI、Azure OpenAI和Bedrock
+- **代理认证流**: 客户端用自建API Key → 验证 → 获取账户OAuth token → 转发到目标API
+- **智能调度**: 统一调度器支持负载均衡、故障切换和会话粘性
 - **Token管理**: 自动监控OAuth token过期并刷新，支持10秒提前刷新策略
-- **代理支持**: 每个Claude账户支持独立代理配置，OAuth token交换也通过代理进行
+- **代理支持**: 每个账户支持独立代理配置，OAuth token交换也通过代理进行
 - **数据加密**: 敏感数据（refreshToken, accessToken）使用AES加密存储在Redis
+- **统一接口**: 提供多种API格式兼容性（原生API + OpenAI兼容格式）
 
 ### 主要服务组件
 
@@ -24,6 +27,8 @@ Claude Relay Service 是一个功能完整的 AI API 中转服务，支持 Claud
 - **geminiAccountService.js**: Gemini账户管理，Google OAuth token刷新和账户选择
 - **apiKeyService.js**: API Key管理，验证、限流和使用统计
 - **oauthHelper.js**: OAuth工具，PKCE流程实现和代理支持
+- **unifiedClaudeScheduler.js**: 统一的Claude账户调度器，支持负载均衡和故障切换
+- **requestHistoryService.js**: 请求历史记录服务，用于追踪和分析API使用情况
 
 ### 认证和代理流程
 
@@ -54,9 +59,15 @@ npm run install:web           # 安装Web界面依赖
 
 # 开发和运行
 npm run dev                   # 开发模式（热重载）
-npm start                     # 生产模式
-npm test                      # 运行测试
-npm run lint                  # 代码检查
+npm start                     # 生产模式（带lint检查）
+npm test                      # 运行测试（Jest + SuperTest）
+npm run lint                  # ESLint代码检查并自动修复
+npm run lint:check            # 仅检查，不修复
+npm run format                # Prettier格式化所有文件
+npm run format:check          # 检查格式但不修复
+
+# Web界面构建
+npm run build:web             # 构建前端（生成dist目录）
 
 # Docker部署
 docker-compose up -d          # 推荐方式
@@ -66,7 +77,14 @@ docker-compose --profile monitoring up -d  # 包含监控
 npm run service:start:daemon  # 后台启动（推荐）
 npm run service:status        # 查看服务状态
 npm run service:logs          # 查看日志
+npm run service:logs:follow   # 实时跟踪日志
 npm run service:stop          # 停止服务
+npm run service:restart:daemon # 重启并后台运行
+
+# CLI工具
+npm run cli                   # 交互式CLI工具
+npm run status                # 系统状态检查
+npm run status:detail         # 详细系统状态
 
 ### 开发环境配置
 必须配置的环境变量：
@@ -110,6 +128,14 @@ npm run setup  # 自动生成密钥并创建管理员账户
 - `GET /api/v1/usage` - 使用统计查询
 - `GET /api/v1/key-info` - API Key信息
 
+### 多平台API端点
+
+- `POST /claude/v1/messages` - Claude API转发（与/api路由相同）
+- `POST /gemini/v1beta/models/{model}:generateContent` - Gemini API转发
+- `POST /openai/v1/chat/completions` - OpenAI兼容格式（支持Claude和Gemini）
+- `POST /openai/claude/v1/chat/completions` - OpenAI格式的Claude API
+- `POST /openai/gemini/v1/chat/completions` - OpenAI格式的Gemini API
+
 ### OAuth管理端点
 
 - `POST /admin/claude-accounts/generate-auth-url` - 生成OAuth授权URL（含代理）
@@ -119,7 +145,10 @@ npm run setup  # 自动生成密钥并创建管理员账户
 ### 系统端点
 
 - `GET /health` - 健康检查
-- `GET /web` - Web管理界面
+- `GET /metrics` - 系统指标和性能数据
+- `GET /` - 根路径重定向到管理界面
+- `GET /admin-next/` - 新版Web管理界面（Vue 3 + Tailwind CSS）
+- `GET /web` - 传统Web管理界面
 - `GET /admin/dashboard` - 系统概览数据
 
 ## 故障排除
@@ -157,8 +186,9 @@ npm run setup  # 自动生成密钥并创建管理员账户
 - **必须使用 Prettier 格式化所有代码**
 - 后端代码（src/）：运行 `npx prettier --write <file>` 格式化
 - 前端代码（web/admin-spa/）：已安装 `prettier-plugin-tailwindcss`，运行 `npx prettier --write <file>` 格式化
-- 提交前检查格式：`npx prettier --check <file>`
-- 格式化所有文件：`npm run format`（如果配置了此脚本）
+- 提交前检查格式：`npx prettier --check <file>` 或 `npm run format:check`
+- 格式化所有文件：`npm run format`
+- ESLint检查：`npm run lint` 或 `npm run lint:check`（仅检查不修复）
 
 ### 前端开发特殊要求
 
@@ -235,12 +265,16 @@ npm run setup  # 自动生成密钥并创建管理员账户
 
 ### Redis 数据结构
 
-- **API Keys**: `api_key:{id}` (详细信息) + `api_key_hash:{hash}` (快速查找)
+- **API Keys**: `api_key:{id}` (详细信息) + `api_key_hash:{hash}` (O(1)快速查找)
 - **Claude 账户**: `claude_account:{id}` (加密的 OAuth 数据)
+- **Gemini 账户**: `gemini_account:{id}` (加密的 Google OAuth 数据)
 - **管理员**: `admin:{id}` + `admin_username:{username}` (用户名映射)
 - **会话**: `session:{token}` (JWT 会话管理)
 - **使用统计**: `usage:daily:{date}:{key}:{model}` (多维度统计)
 - **系统信息**: `system_info` (系统状态缓存)
+- **账户调度**: `claude_scheduler:*` (账户调度状态和负载均衡)
+- **请求历史**: `request_history:*` (API请求历史记录)
+- **错误计数**: `claude_account:{id}:401_errors` (OAuth错误追踪)
 
 ### 流式响应处理
 
@@ -265,6 +299,18 @@ npm run cli accounts refresh <accountId>
 # 管理员操作
 npm run cli admin create -- --username admin2
 npm run cli admin reset-password -- --username admin
+
+# 数据迁移和维护
+npm run migrate:apikey-expiry        # API Key过期时间迁移
+npm run migrate:apikey-expiry:dry    # 迁移预览（不实际执行）
+npm run migrate:fix-usage-stats     # 修复使用统计数据
+npm run data:export                  # 导出数据
+npm run data:import                  # 导入数据
+npm run data:export:sanitized       # 导出脱敏数据
+
+# 模型定价更新
+npm run update:pricing               # 更新模型定价信息
+npm run test:pricing-fallback        # 测试定价回退机制
 ```
 
 # important-instruction-reminders
