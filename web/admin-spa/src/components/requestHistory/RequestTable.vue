@@ -121,9 +121,6 @@
             <!-- Token使用 -->
             <td class="px-6 py-4">
               <div class="text-sm">
-                <div class="font-medium text-gray-900 dark:text-white">
-                  {{ formatNumber(request.totalTokens || 0) }}
-                </div>
                 <div class="text-xs text-gray-500 dark:text-gray-400">
                   {{ formatNumber(request.inputTokens || 0) }} /
                   {{ formatNumber(request.outputTokens || 0) }}
@@ -156,10 +153,7 @@
             <td class="px-6 py-4">
               <div class="text-sm">
                 <div class="text-gray-900 dark:text-white">
-                  {{ formatDate(request.timestamp) }}
-                </div>
-                <div class="text-xs text-gray-500 dark:text-gray-400">
-                  {{ formatTime(request.timestamp) }}
+                  {{ formatDate(request.timestamp) }} {{ formatTime(request.timestamp) }}
                 </div>
               </div>
             </td>
@@ -187,34 +181,6 @@
         </tbody>
       </table>
     </div>
-
-    <!-- 加载更多 -->
-    <div
-      v-if="hasMore || (loading && requests.length > 0)"
-      class="border-t border-gray-200 px-6 py-4 dark:border-gray-700"
-    >
-      <div class="text-center">
-        <button v-if="hasMore && !loading" class="btn btn-outline" @click="$emit('load-more')">
-          <i class="fas fa-chevron-down mr-2"></i>
-          加载更多
-        </button>
-        <div v-else-if="loading" class="flex items-center justify-center">
-          <div class="loading-spinner mr-2"></div>
-          <span class="text-gray-500 dark:text-gray-400">加载中...</span>
-        </div>
-      </div>
-    </div>
-
-    <!-- 到底提示 -->
-    <div
-      v-if="!hasMore && requests.length > 0 && !loading"
-      class="border-t border-gray-200 px-6 py-4 text-center dark:border-gray-700"
-    >
-      <span class="text-sm text-gray-500 dark:text-gray-400">
-        <i class="fas fa-check-circle mr-1"></i>
-        已显示全部 {{ requests.length }} 条记录
-      </span>
-    </div>
   </div>
 </template>
 
@@ -230,14 +196,10 @@ const props = defineProps({
   loading: {
     type: Boolean,
     default: false
-  },
-  hasMore: {
-    type: Boolean,
-    default: false
   }
 })
 
-const emit = defineEmits(['view-details', 'delete-request', 'load-more'])
+const emit = defineEmits(['view-details', 'delete-request'])
 
 // 响应式数据
 const selectedRequests = ref([])

@@ -65,15 +65,105 @@
     </div>
 
     <!-- 请求列表表格（主要内容） -->
-    <RequestTable
-      v-else
-      :has-more="hasMore"
-      :loading="loading"
-      :requests="requests"
-      @delete-request="deleteRequest"
-      @load-more="loadMore"
-      @view-details="openDetailsModal"
-    />
+    <div v-else class="space-y-4">
+      <RequestTable
+        :loading="loading"
+        :requests="requests"
+        @delete-request="deleteRequest"
+        @view-details="openDetailsModal"
+      />
+
+      <!-- 分页控件 -->
+      <div
+        v-if="requests.length > 0 || pagination.total > 0"
+        class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"
+      >
+        <!-- 左侧：每页显示条数选择器 -->
+        <div class="flex items-center gap-2">
+          <span class="text-sm text-gray-700 dark:text-gray-300">每页显示：</span>
+          <select
+            v-model="pagination.pageSize"
+            class="rounded-md border-gray-300 bg-white text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+            @change="handlePageSizeChange(pagination.pageSize)"
+          >
+            <option v-for="size in pagination.pageSizeOptions" :key="size" :value="size">
+              {{ size }} 条
+            </option>
+          </select>
+          <span class="text-sm text-gray-500 dark:text-gray-400">
+            <template v-if="pagination.total > 0"> 共 {{ pagination.total }} 条记录 </template>
+            <template v-else> 当前页 {{ requests.length }} 条记录 </template>
+          </span>
+        </div>
+
+        <!-- 右侧：分页导航 -->
+        <div class="flex items-center gap-2">
+          <!-- 上一页按钮 -->
+          <button
+            class="inline-flex items-center rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+            :disabled="pagination.currentPage <= 1"
+            @click="handlePageChange(pagination.currentPage - 1)"
+          >
+            <i class="fas fa-chevron-left mr-1"></i>
+            上一页
+          </button>
+
+          <!-- 页码按钮 -->
+          <div class="flex gap-1">
+            <!-- 第一页 -->
+            <button
+              v-if="pagination.currentPage > 3"
+              class="inline-flex h-10 w-10 items-center justify-center rounded-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+              @click="handlePageChange(1)"
+            >
+              1
+            </button>
+            <span v-if="pagination.currentPage > 4" class="flex items-center px-2 text-gray-500"
+              >...</span
+            >
+
+            <!-- 当前页前后的页码 -->
+            <button
+              v-for="page in getVisiblePages()"
+              :key="page"
+              class="inline-flex h-10 w-10 items-center justify-center rounded-md border text-sm font-medium"
+              :class="[
+                page === pagination.currentPage
+                  ? 'border-blue-500 bg-blue-500 text-white'
+                  : 'border-gray-300 bg-white text-gray-500 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700'
+              ]"
+              @click="handlePageChange(page)"
+            >
+              {{ page }}
+            </button>
+
+            <!-- 最后一页 -->
+            <span
+              v-if="pagination.currentPage < totalPages - 3"
+              class="flex items-center px-2 text-gray-500"
+              >...</span
+            >
+            <button
+              v-if="pagination.currentPage < totalPages - 2"
+              class="inline-flex h-10 w-10 items-center justify-center rounded-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+              @click="handlePageChange(totalPages)"
+            >
+              {{ totalPages }}
+            </button>
+          </div>
+
+          <!-- 下一页按钮 -->
+          <button
+            class="inline-flex items-center rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+            :disabled="pagination.currentPage >= totalPages"
+            @click="handlePageChange(pagination.currentPage + 1)"
+          >
+            下一页
+            <i class="fas fa-chevron-right ml-1"></i>
+          </button>
+        </div>
+      </div>
+    </div>
 
     <!-- 配置弹窗 -->
     <div
@@ -293,12 +383,42 @@ const configForm = reactive({
 
 // 分页相关
 const pagination = reactive({
-  limit: 50,
-  offset: 0,
-  hasMore: false
+  currentPage: 1,
+  pageSize: 10,
+  total: 0,
+  pageSizeOptions: [10, 20, 30]
 })
 
-const hasMore = computed(() => pagination.hasMore)
+const totalPages = computed(() => {
+  if (pagination.total > 0) {
+    return Math.ceil(pagination.total / pagination.pageSize)
+  }
+  // 如果没有total，根据当前页和数据量推测
+  if (requests.value.length === pagination.pageSize) {
+    // 如果当前页满了，可能还有下一页
+    return pagination.currentPage + 1
+  } else {
+    // 如果当前页没满，这就是最后一页
+    return pagination.currentPage
+  }
+})
+
+// 获取可见的页码范围
+const getVisiblePages = () => {
+  const current = pagination.currentPage
+  const total = totalPages.value
+  const range = []
+
+  // 显示当前页前后最多2页
+  const start = Math.max(1, current - 2)
+  const end = Math.min(total, current + 2)
+
+  for (let i = start; i <= end; i++) {
+    range.push(i)
+  }
+
+  return range
+}
 
 // 计算属性
 const successRate = computed(() => {
@@ -330,8 +450,8 @@ const selectedRequest = ref(null)
 const api = {
   async getRequestHistory(params = {}) {
     const requestParams = {
-      limit: params.limit || pagination.limit,
-      offset: params.offset || 0
+      limit: params.limit || pagination.pageSize,
+      offset: params.offset || (pagination.currentPage - 1) * pagination.pageSize
     }
 
     // 只保留apiKeyId和时间查询参数
@@ -376,34 +496,37 @@ const api = {
 }
 
 // 加载数据
-const loadRequests = async (append = false) => {
+const loadRequests = async () => {
   // 如果没有选择API Key，清空数据
   if (!filters.apiKeyId) {
     requests.value = []
-    pagination.hasMore = false
-    pagination.offset = 0
+    pagination.total = 0
+    pagination.currentPage = 1
     return
   }
 
   try {
     loading.value = true
     const params = {
-      limit: pagination.limit,
-      offset: append ? pagination.offset : 0
+      limit: pagination.pageSize,
+      offset: (pagination.currentPage - 1) * pagination.pageSize
     }
 
     const response = await api.getRequestHistory(params)
 
     if (response.success) {
-      if (append) {
-        requests.value.push(...response.data.history)
-      } else {
-        requests.value = response.data.history
-        pagination.offset = 0
+      requests.value = response.data.history
+      // 处理后端返回的分页信息
+      if (response.data.total !== undefined) {
+        pagination.total = response.data.total
+      } else if (response.data.hasMore !== undefined) {
+        // 如果没有total但有hasMore，我们基于hasMore来推测
+        if (!response.data.hasMore && requests.value.length < pagination.pageSize) {
+          // 如果没有更多数据且当前页不满，计算total
+          pagination.total =
+            (pagination.currentPage - 1) * pagination.pageSize + requests.value.length
+        }
       }
-
-      pagination.hasMore = response.data.hasMore
-      pagination.offset += response.data.history.length
     } else {
       showToast(response.message || '加载失败', 'error')
     }
@@ -451,16 +574,22 @@ const handleFiltersChange = (newFilters) => {
   // 更新本地筛选器
   Object.assign(filters, newFilters)
   // 重置分页
-  pagination.offset = 0
+  pagination.currentPage = 1
   // 重新加载数据
   loadRequests()
   loadStats()
 }
 
-const loadMore = () => {
-  if (!loading.value && hasMore.value) {
-    loadRequests(true)
-  }
+// 分页事件处理
+const handlePageChange = (page) => {
+  pagination.currentPage = page
+  loadRequests()
+}
+
+const handlePageSizeChange = (newPageSize) => {
+  pagination.pageSize = newPageSize
+  pagination.currentPage = 1
+  loadRequests()
 }
 
 const refresh = () => {
