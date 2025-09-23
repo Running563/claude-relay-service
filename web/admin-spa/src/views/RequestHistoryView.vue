@@ -68,14 +68,14 @@
     <div v-else class="space-y-4">
       <RequestTable
         :loading="loading"
-        :requests="requests"
+        :requests="requestsWithAccountNames"
         @delete-request="deleteRequest"
         @view-details="openDetailsModal"
       />
 
       <!-- 分页控件 -->
       <div
-        v-if="requests.length > 0 || pagination.total > 0"
+        v-if="requestsWithAccountNames.length > 0 || pagination.total > 0"
         class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"
       >
         <!-- 左侧：每页显示条数选择器 -->
@@ -92,7 +92,7 @@
           </select>
           <span class="text-sm text-gray-500 dark:text-gray-400">
             <template v-if="pagination.total > 0"> 共 {{ pagination.total }} 条记录 </template>
-            <template v-else> 当前页 {{ requests.length }} 条记录 </template>
+            <template v-else> 当前页 {{ requestsWithAccountNames.length }} 条记录 </template>
           </span>
         </div>
 
@@ -360,6 +360,7 @@ import RequestDetailsModal from '@/components/requestHistory/RequestDetailsModal
 const loading = ref(false)
 const statsLoading = ref(false)
 const requests = ref([])
+const accounts = ref([])
 const stats = ref({
   totalRequests: 0,
   successRequests: 0,
@@ -424,6 +425,23 @@ const getVisiblePages = () => {
 const successRate = computed(() => {
   if (stats.value.totalRequests === 0) return 0
   return Math.round((stats.value.successRequests / stats.value.totalRequests) * 100)
+})
+
+// 账户映射：accountId -> accountName
+const accountMap = computed(() => {
+  const map = new Map()
+  accounts.value.forEach((account) => {
+    map.set(account.id, account.name)
+  })
+  return map
+})
+
+// 为请求添加账户名称
+const requestsWithAccountNames = computed(() => {
+  return requests.value.map((request) => ({
+    ...request,
+    accountName: request.accountId ? accountMap.value.get(request.accountId) : null
+  }))
 })
 
 // 格式化数字
@@ -492,6 +510,14 @@ const api = {
 
   async updateConfig(config) {
     return await apiClient.put('/admin/request-history/config', config)
+  },
+
+  async getAllAccounts() {
+    return await apiClient.get('/admin/claude-accounts')
+  },
+
+  async getAllConsoleAccounts() {
+    return await apiClient.get('/admin/claude-console-accounts')
   }
 }
 
@@ -565,6 +591,32 @@ const loadStats = async () => {
     console.error('加载统计数据失败:', error)
   } finally {
     statsLoading.value = false
+  }
+}
+
+const loadAccounts = async () => {
+  try {
+    // 并行加载 Claude OAuth 账户和 Claude Console 账户
+    const [oauthResponse, consoleResponse] = await Promise.all([
+      api.getAllAccounts(),
+      api.getAllConsoleAccounts()
+    ])
+
+    let allAccounts = []
+
+    // 合并 Claude OAuth 账户
+    if (oauthResponse.success) {
+      allAccounts = [...allAccounts, ...oauthResponse.data]
+    }
+
+    // 合并 Claude Console 账户
+    if (consoleResponse.success) {
+      allAccounts = [...allAccounts, ...consoleResponse.data]
+    }
+
+    accounts.value = allAccounts
+  } catch (error) {
+    console.error('加载账户列表失败:', error)
   }
 }
 
@@ -700,6 +752,8 @@ const saveConfig = async () => {
 
 // 生命周期
 onMounted(() => {
+  // 初始化时加载账户数据，用于账户名称映射
+  loadAccounts()
   // 初始化时不自动加载数据，等用户选择API Key后再加载
   loadRequests()
   loadStats()

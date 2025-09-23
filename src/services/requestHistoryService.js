@@ -176,6 +176,7 @@ class RequestHistoryService {
         status: 'success',
         duration,
         responseBody,
+        accountId: responseData.accountId,
         statusCode: responseData.statusCode,
         inputTokens: responseData.inputTokens || 0,
         outputTokens: responseData.outputTokens || 0,

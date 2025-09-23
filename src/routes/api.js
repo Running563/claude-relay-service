@@ -205,6 +205,7 @@ async function handleMessagesRequest(req, res) {
                   outputTokens,
                   cacheCreateTokens,
                   cacheReadTokens,
+                  accountId,
                   responseBody: { type: 'stream', message: 'Stream response completed' }
                 })
                 .catch((error) => {
@@ -319,6 +320,21 @@ async function handleMessagesRequest(req, res) {
                   }
                 }
               }
+
+              // 🔄 完成请求历史记录
+              requestHistoryService
+                .completeRequest(requestId, {
+                  statusCode: 200,
+                  inputTokens,
+                  outputTokens,
+                  cacheCreateTokens,
+                  cacheReadTokens,
+                  accountId,
+                  responseBody: { type: 'stream', message: 'Stream response completed' }
+                })
+                .catch((error) => {
+                  logger.error('❌ Failed to complete request history:', error)
+                })
 
               usageDataCaptured = true
               logger.api(
@@ -695,6 +711,7 @@ async function handleMessagesRequest(req, res) {
             outputTokens,
             cacheCreateTokens,
             cacheReadTokens,
+            accountId,
             responseBody: jsonData
           })
 

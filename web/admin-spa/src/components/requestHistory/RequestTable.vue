@@ -34,6 +34,7 @@
             </th>
             <th class="table-header">请求ID</th>
             <th class="table-header">API Key</th>
+            <th class="table-header">账号</th>
             <th class="table-header">模型</th>
             <th class="table-header">状态</th>
             <th class="table-header">Token使用</th>
@@ -45,7 +46,7 @@
         <tbody class="divide-y divide-gray-200 bg-white dark:divide-gray-700 dark:bg-gray-800">
           <!-- 加载状态 -->
           <tr v-if="loading && requests.length === 0">
-            <td class="px-6 py-12 text-center" colspan="9">
+            <td class="px-6 py-12 text-center" colspan="10">
               <div class="loading-spinner mx-auto mb-4"></div>
               <p class="text-gray-500 dark:text-gray-400">正在加载请求历史...</p>
             </td>
@@ -53,7 +54,7 @@
 
           <!-- 空状态 -->
           <tr v-else-if="!loading && requests.length === 0">
-            <td class="px-6 py-12 text-center" colspan="9">
+            <td class="px-6 py-12 text-center" colspan="10">
               <div
                 class="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-700"
               >
@@ -97,6 +98,33 @@
               <div class="text-sm">
                 <span class="font-medium text-gray-900 dark:text-white">
                   {{ request.apiKeyName || '未知' }}
+                </span>
+              </div>
+            </td>
+
+            <!-- 账号 -->
+            <td class="px-6 py-4">
+              <div class="text-sm">
+                <span
+                  v-if="request.accountName"
+                  class="inline-flex items-center rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-800 dark:bg-green-900 dark:text-green-200"
+                >
+                  <i class="fas fa-user mr-1"></i>
+                  {{ request.accountName }}
+                </span>
+                <span
+                  v-else-if="request.accountId"
+                  class="inline-flex items-center rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-600 dark:bg-gray-700 dark:text-gray-300"
+                >
+                  <i class="fas fa-user mr-1"></i>
+                  {{ truncateId(request.accountId) }}
+                </span>
+                <span
+                  v-else
+                  class="inline-flex items-center rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-medium text-red-800 dark:bg-red-900 dark:text-red-200"
+                >
+                  <i class="fas fa-user-slash mr-1"></i>
+                  未知账号
                 </span>
               </div>
             </td>
