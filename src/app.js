@@ -78,6 +78,12 @@ class Application {
       const claudeAccountService = require('./services/claudeAccountService')
       await claudeAccountService.initializeSessionWindows()
 
+      // 📁 初始化请求历史服务
+      logger.info('📁 Initializing request history service...')
+      const requestHistoryService = require('./services/requestHistoryService')
+      await requestHistoryService.ensureInitialized()
+      logger.success('✅ Request history service initialized')
+
       // 超早期拦截 /admin-next/ 请求 - 在所有中间件之前
       this.app.use((req, res, next) => {
         if (req.path === '/admin-next/' && req.method === 'GET') {

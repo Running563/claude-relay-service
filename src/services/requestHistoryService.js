@@ -6,14 +6,28 @@ class RequestHistoryService {
   constructor() {
     // 默认配置值
     this.defaultConfig = {
-      enableHistoryLogging: true,
+      enableHistoryLogging: false,
       maxRecordsPerKey: 1000, // 每个API Key最多保留1000条记录
       maxRequestBodySize: 5000, // 减少存储大小
       maxResponseBodySize: 10000 // 减少存储大小
     }
 
-    // 初始化配置
-    this.initializeConfig()
+    // 设置默认配置值，Redis连接后再初始化
+    this.enableHistoryLogging = this.defaultConfig.enableHistoryLogging
+    this.maxRecordsPerKey = this.defaultConfig.maxRecordsPerKey
+    this.maxRequestBodySize = this.defaultConfig.maxRequestBodySize
+    this.maxResponseBodySize = this.defaultConfig.maxResponseBodySize
+
+    // 标记是否已经初始化
+    this.initialized = false
+  }
+
+  // 🔧 确保初始化（在首次使用前调用）
+  async ensureInitialized() {
+    if (!this.initialized) {
+      await this.initializeConfig()
+      this.initialized = true
+    }
   }
 
   // 🔧 初始化配置（从Redis加载或使用默认值）
