@@ -19,6 +19,26 @@ class UnifiedOpenAIScheduler {
     return schedulable !== false && schedulable !== 'false'
   }
 
+  // 🔧 辅助方法：检查账户是否被限流（兼容字符串和对象格式）
+  _isRateLimited(rateLimitStatus) {
+    if (!rateLimitStatus) {
+      return false
+    }
+
+    // 兼容字符串格式（Redis 原始数据）
+    if (typeof rateLimitStatus === 'string') {
+      return rateLimitStatus === 'limited'
+    }
+
+    // 兼容对象格式（getAllAccounts 返回的数据）
+    if (typeof rateLimitStatus === 'object') {
+      // 检查对象中的 status 字段
+      return rateLimitStatus.status === 'limited' || rateLimitStatus.isRateLimited === true
+    }
+
+    return false
+  }
+
   // 🎯 统一调度OpenAI账号
   async selectAccountForApiKey(apiKeyData, sessionHash = null, requestedModel = null) {
     try {
@@ -59,11 +79,13 @@ class UnifiedOpenAIScheduler {
             if (isRateLimited) {
               const errorMsg = `Dedicated account ${boundAccount.name} is currently rate limited`
               logger.warn(`⚠️ ${errorMsg}`)
-              throw new Error(errorMsg)
+              const error = new Error(errorMsg)
+              error.statusCode = 429 // Too Many Requests - 限流
+              throw error
             }
           } else if (
             accountType === 'openai-responses' &&
-            boundAccount.rateLimitStatus === 'limited'
+            this._isRateLimited(boundAccount.rateLimitStatus)
           ) {
             // OpenAI-Responses 账户的限流检查
             const isRateLimitCleared = await openaiResponsesAccountService.checkAndClearRateLimit(
@@ -72,7 +94,9 @@ class UnifiedOpenAIScheduler {
             if (!isRateLimitCleared) {
               const errorMsg = `Dedicated account ${boundAccount.name} is currently rate limited`
               logger.warn(`⚠️ ${errorMsg}`)
-              throw new Error(errorMsg)
+              const error = new Error(errorMsg)
+              error.statusCode = 429 // Too Many Requests - 限流
+              throw error
             }
           }
 
@@ -88,7 +112,9 @@ class UnifiedOpenAIScheduler {
             if (!modelSupported) {
               const errorMsg = `Dedicated account ${boundAccount.name} does not support model ${requestedModel}`
               logger.warn(`⚠️ ${errorMsg}`)
-              throw new Error(errorMsg)
+              const error = new Error(errorMsg)
+              error.statusCode = 400 // Bad Request - 请求参数错误
+              throw error
             }
           }
 
@@ -113,7 +139,9 @@ class UnifiedOpenAIScheduler {
             ? `Dedicated account ${boundAccount.name} is not available (inactive or error status)`
             : `Dedicated account ${apiKeyData.openaiAccountId} not found`
           logger.warn(`⚠️ ${errorMsg}`)
-          throw new Error(errorMsg)
+          const error = new Error(errorMsg)
+          error.statusCode = boundAccount ? 403 : 404 // Forbidden 或 Not Found
+          throw error
         }
       }
 
@@ -150,11 +178,15 @@ class UnifiedOpenAIScheduler {
       if (availableAccounts.length === 0) {
         // 提供更详细的错误信息
         if (requestedModel) {
-          throw new Error(
+          const error = new Error(
             `No available OpenAI accounts support the requested model: ${requestedModel}`
           )
+          error.statusCode = 400 // Bad Request - 模型不支持
+          throw error
         } else {
-          throw new Error('No available OpenAI accounts')
+          const error = new Error('No available OpenAI accounts')
+          error.statusCode = 402 // Payment Required - 资源耗尽
+          throw error
         }
       }
 
@@ -283,7 +315,7 @@ class UnifiedOpenAIScheduler {
         )
 
         // 如果仍然处于限流状态，跳过
-        if (account.rateLimitStatus === 'limited' && !isRateLimitCleared) {
+        if (this._isRateLimited(account.rateLimitStatus) && !isRateLimitCleared) {
           logger.debug(`⏭️ Skipping OpenAI-Responses account ${account.name} - rate limited`)
           continue
         }
@@ -350,7 +382,7 @@ class UnifiedOpenAIScheduler {
         // 检查并清除过期的限流状态
         const isRateLimitCleared =
           await openaiResponsesAccountService.checkAndClearRateLimit(accountId)
-        return account.rateLimitStatus !== 'limited' || isRateLimitCleared
+        return !this._isRateLimited(account.rateLimitStatus) || isRateLimitCleared
       }
       return false
     } catch (error) {
@@ -504,7 +536,7 @@ class UnifiedOpenAIScheduler {
         return false
       }
 
-      if (account.rateLimitStatus === 'limited') {
+      if (this._isRateLimited(account.rateLimitStatus)) {
         // 如果有具体的重置时间，使用它
         if (account.rateLimitResetAt) {
           const resetTime = new Date(account.rateLimitResetAt).getTime()
@@ -542,11 +574,15 @@ class UnifiedOpenAIScheduler {
       // 获取分组信息
       const group = await accountGroupService.getGroup(groupId)
       if (!group) {
-        throw new Error(`Group ${groupId} not found`)
+        const error = new Error(`Group ${groupId} not found`)
+        error.statusCode = 404 // Not Found - 资源不存在
+        throw error
       }
 
       if (group.platform !== 'openai') {
-        throw new Error(`Group ${group.name} is not an OpenAI group`)
+        const error = new Error(`Group ${group.name} is not an OpenAI group`)
+        error.statusCode = 400 // Bad Request - 请求参数错误
+        throw error
       }
 
       logger.info(`👥 Selecting account from OpenAI group: ${group.name}`)
@@ -581,7 +617,9 @@ class UnifiedOpenAIScheduler {
       // 获取分组成员
       const memberIds = await accountGroupService.getGroupMembers(groupId)
       if (memberIds.length === 0) {
-        throw new Error(`Group ${group.name} has no members`)
+        const error = new Error(`Group ${group.name} has no members`)
+        error.statusCode = 402 // Payment Required - 资源耗尽
+        throw error
       }
 
       // 获取可用的分组成员账户
@@ -633,7 +671,9 @@ class UnifiedOpenAIScheduler {
       }
 
       if (availableAccounts.length === 0) {
-        throw new Error(`No available accounts in group ${group.name}`)
+        const error = new Error(`No available accounts in group ${group.name}`)
+        error.statusCode = 402 // Payment Required - 资源耗尽
+        throw error
       }
 
       // 按最后使用时间排序（最久未使用的优先，与 Claude 保持一致）
