@@ -143,8 +143,9 @@ async function handleStandardGenerateContent(req, res) {
     const model = req.params.modelName || 'gemini-2.0-flash-exp'
     const sessionHash = sessionHelper.generateSessionHash(req.body)
 
-    // 标准 Gemini API 请求体直接包含 contents 等字段
-    const { contents, generationConfig, safetySettings, systemInstruction } = req.body
+    // 标准 Gemini API 请求体直接包含 contents 等字段（包括函数调用参数）
+    const { contents, generationConfig, safetySettings, systemInstruction, tools, tool_config } =
+      req.body
 
     // 验证必需参数
     if (!contents || !Array.isArray(contents) || contents.length === 0) {
@@ -269,10 +270,38 @@ async function handleStandardGenerateContent(req, res) {
     // 生成一个符合 Gemini CLI 格式的 user_prompt_id
     const userPromptId = `${require('crypto').randomUUID()}########0`
 
+    // 构建完整的请求数据，包含函数调用参数
+    const fullRequestData = {
+      model,
+      request: actualRequestData
+    }
+
+    // 添加函数调用参数（如果存在）
+    if (tools) {
+      fullRequestData.tools = tools
+      logger.info('🔧 Function calling tools forwarded', { toolsCount: tools.length })
+    }
+
+    if (tool_config) {
+      fullRequestData.tool_config = tool_config
+      logger.info('⚙️ Function calling config forwarded', {
+        mode: tool_config?.function_calling_config?.mode
+      })
+    }
+
+    logger.info('🤖 generateContent API调用开始', {
+      model,
+      userPromptId,
+      projectId: effectiveProjectId,
+      sessionId: req.apiKey?.id,
+      hasTools: !!tools,
+      hasToolConfig: !!tool_config
+    })
+
     // 调用内部 API（cloudcode-pa）
     const response = await geminiAccountService.generateContent(
       client,
-      { model, request: actualRequestData },
+      fullRequestData,
       userPromptId, // 使用生成的 user_prompt_id
       effectiveProjectId, // 使用处理后的项目ID
       req.apiKey?.id, // 使用 API Key ID 作为 session ID
@@ -355,8 +384,9 @@ async function handleStandardStreamGenerateContent(req, res) {
     const model = req.params.modelName || 'gemini-2.0-flash-exp'
     const sessionHash = sessionHelper.generateSessionHash(req.body)
 
-    // 标准 Gemini API 请求体直接包含 contents 等字段
-    const { contents, generationConfig, safetySettings, systemInstruction } = req.body
+    // 标准 Gemini API 请求体直接包含 contents 等字段（包括函数调用参数）
+    const { contents, generationConfig, safetySettings, systemInstruction, tools, tool_config } =
+      req.body
 
     // 验证必需参数
     if (!contents || !Array.isArray(contents) || contents.length === 0) {
@@ -492,10 +522,38 @@ async function handleStandardStreamGenerateContent(req, res) {
     // 生成一个符合 Gemini CLI 格式的 user_prompt_id
     const userPromptId = `${require('crypto').randomUUID()}########0`
 
+    // 构建完整的请求数据，包含函数调用参数
+    const fullRequestData = {
+      model,
+      request: actualRequestData
+    }
+
+    // 添加函数调用参数（如果存在）
+    if (tools) {
+      fullRequestData.tools = tools
+      logger.info('🔧 Function calling tools forwarded (stream)', { toolsCount: tools.length })
+    }
+
+    if (tool_config) {
+      fullRequestData.tool_config = tool_config
+      logger.info('⚙️ Function calling config forwarded (stream)', {
+        mode: tool_config?.function_calling_config?.mode
+      })
+    }
+
+    logger.info('🌊 streamGenerateContent API调用开始', {
+      model,
+      userPromptId,
+      projectId: effectiveProjectId,
+      sessionId: req.apiKey?.id,
+      hasTools: !!tools,
+      hasToolConfig: !!tool_config
+    })
+
     // 调用内部 API（cloudcode-pa）的流式接口
     const streamResponse = await geminiAccountService.generateContentStream(
       client,
-      { model, request: actualRequestData },
+      fullRequestData,
       userPromptId, // 使用生成的 user_prompt_id
       effectiveProjectId, // 使用处理后的项目ID
       req.apiKey?.id, // 使用 API Key ID 作为 session ID

@@ -598,6 +598,19 @@ async function handleGenerateContent(req, res) {
     }
 
     const { project, user_prompt_id, request: requestData, tools, tool_config } = req.body
+
+    // 🔍 调试：记录从请求体提取的参数
+    logger.info('🔍 Extracted from req.body', {
+      hasProject: !!project,
+      hasUserPromptId: !!user_prompt_id,
+      hasRequestData: !!requestData,
+      hasTools: !!tools,
+      hasToolConfig: !!tool_config,
+      toolsType: typeof tools,
+      toolConfigType: typeof tool_config,
+      reqBodyKeys: Object.keys(req.body)
+    })
+
     // 从路径参数或请求体中获取模型名
     const model = req.body.model || req.params.modelName || 'gemini-2.5-flash'
     const sessionHash = sessionHelper.generateSessionHash(req.body)
@@ -621,7 +634,13 @@ async function handleGenerateContent(req, res) {
         }
       } else if (req.body.contents) {
         // 直接的 Gemini 格式请求（没有 request 包装）
-        actualRequestData = req.body
+        // ✅ 只提取 request 相关字段，不包含 tools 和 tool_config
+        actualRequestData = {
+          contents: req.body.contents,
+          generationConfig: req.body.generationConfig,
+          systemInstruction: req.body.systemInstruction,
+          safetySettings: req.body.safetySettings
+        }
       }
     }
 
@@ -695,6 +714,15 @@ async function handleGenerateContent(req, res) {
         mode: tool_config?.function_calling_config?.mode
       })
     }
+
+    // 🔍 调试：记录完整的请求数据结构
+    logger.info('🔍 Full request data structure', {
+      hasTools: !!fullRequestData.tools,
+      hasToolConfig: !!fullRequestData.tool_config,
+      toolsCount: fullRequestData.tools?.length,
+      toolConfigMode: fullRequestData.tool_config?.function_calling_config?.mode,
+      fullRequestData: JSON.stringify(fullRequestData)
+    })
 
     const response = await geminiAccountService.generateContent(
       client,
@@ -771,6 +799,19 @@ async function handleStreamGenerateContent(req, res) {
     }
 
     const { project, user_prompt_id, request: requestData, tools, tool_config } = req.body
+
+    // 🔍 调试：记录从请求体提取的参数
+    logger.info('🔍 Extracted from req.body', {
+      hasProject: !!project,
+      hasUserPromptId: !!user_prompt_id,
+      hasRequestData: !!requestData,
+      hasTools: !!tools,
+      hasToolConfig: !!tool_config,
+      toolsType: typeof tools,
+      toolConfigType: typeof tool_config,
+      reqBodyKeys: Object.keys(req.body)
+    })
+
     // 从路径参数或请求体中获取模型名
     const model = req.body.model || req.params.modelName || 'gemini-2.5-flash'
     const sessionHash = sessionHelper.generateSessionHash(req.body)
@@ -794,7 +835,13 @@ async function handleStreamGenerateContent(req, res) {
         }
       } else if (req.body.contents) {
         // 直接的 Gemini 格式请求（没有 request 包装）
-        actualRequestData = req.body
+        // ✅ 只提取 request 相关字段，不包含 tools 和 tool_config
+        actualRequestData = {
+          contents: req.body.contents,
+          generationConfig: req.body.generationConfig,
+          systemInstruction: req.body.systemInstruction,
+          safetySettings: req.body.safetySettings
+        }
       }
     }
 
@@ -1090,6 +1137,17 @@ router.post(
 )
 router.post(
   '/v1beta/models/:modelName\\:streamGenerateContent',
+  authenticateApiKey,
+  handleStreamGenerateContent
+)
+
+// ✅ 添加标准 v1 API 路由（与 v1beta 使用相同的处理函数）
+router.post('/v1/models/:modelName\\:loadCodeAssist', authenticateApiKey, handleLoadCodeAssist)
+router.post('/v1/models/:modelName\\:onboardUser', authenticateApiKey, handleOnboardUser)
+router.post('/v1/models/:modelName\\:countTokens', authenticateApiKey, handleCountTokens)
+router.post('/v1/models/:modelName\\:generateContent', authenticateApiKey, handleGenerateContent)
+router.post(
+  '/v1/models/:modelName\\:streamGenerateContent',
   authenticateApiKey,
   handleStreamGenerateContent
 )
