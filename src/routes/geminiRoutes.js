@@ -598,7 +598,6 @@ async function handleGenerateContent(req, res) {
     }
 
     const { project, user_prompt_id, request: requestData, tools, tool_config } = req.body
-
     // 从路径参数或请求体中获取模型名
     const model = req.body.model || req.params.modelName || 'gemini-2.5-flash'
     const sessionHash = sessionHelper.generateSessionHash(req.body)
@@ -774,7 +773,6 @@ async function handleStreamGenerateContent(req, res) {
     }
 
     const { project, user_prompt_id, request: requestData, tools, tool_config } = req.body
-
     // 从路径参数或请求体中获取模型名
     const model = req.body.model || req.params.modelName || 'gemini-2.5-flash'
     const sessionHash = sessionHelper.generateSessionHash(req.body)
