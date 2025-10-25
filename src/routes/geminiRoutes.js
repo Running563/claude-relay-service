@@ -597,7 +597,7 @@ async function handleGenerateContent(req, res) {
       return undefined
     }
 
-    const { project, user_prompt_id, request: requestData } = req.body
+    const { project, user_prompt_id, request: requestData, tools, tool_config } = req.body
     // 从路径参数或请求体中获取模型名
     const model = req.body.model || req.params.modelName || 'gemini-2.5-flash'
     const sessionHash = sessionHelper.generateSessionHash(req.body)
@@ -677,9 +677,28 @@ async function handleGenerateContent(req, res) {
       decision: account.projectId ? '使用账户配置' : project ? '使用请求参数' : '不使用项目ID'
     })
 
+    // ✅ 构建完整的请求数据，包含函数调用参数
+    const fullRequestData = {
+      model,
+      request: actualRequestData
+    }
+
+    // 添加函数调用参数（如果存在）
+    if (tools) {
+      fullRequestData.tools = tools
+      logger.info('🔧 Function calling tools forwarded', { toolsCount: tools.length })
+    }
+
+    if (tool_config) {
+      fullRequestData.tool_config = tool_config
+      logger.info('⚙️ Function calling config forwarded', {
+        mode: tool_config?.function_calling_config?.mode
+      })
+    }
+
     const response = await geminiAccountService.generateContent(
       client,
-      { model, request: actualRequestData },
+      fullRequestData,
       user_prompt_id,
       effectiveProjectId, // 使用智能决策的项目ID
       req.apiKey?.id, // 使用 API Key ID 作为 session ID
@@ -751,7 +770,7 @@ async function handleStreamGenerateContent(req, res) {
       return undefined
     }
 
-    const { project, user_prompt_id, request: requestData } = req.body
+    const { project, user_prompt_id, request: requestData, tools, tool_config } = req.body
     // 从路径参数或请求体中获取模型名
     const model = req.body.model || req.params.modelName || 'gemini-2.5-flash'
     const sessionHash = sessionHelper.generateSessionHash(req.body)
@@ -842,9 +861,28 @@ async function handleStreamGenerateContent(req, res) {
       decision: account.projectId ? '使用账户配置' : project ? '使用请求参数' : '不使用项目ID'
     })
 
+    // ✅ 构建完整的请求数据，包含函数调用参数
+    const fullRequestData = {
+      model,
+      request: actualRequestData
+    }
+
+    // 添加函数调用参数（如果存在）
+    if (tools) {
+      fullRequestData.tools = tools
+      logger.info('🔧 Function calling tools forwarded (stream)', { toolsCount: tools.length })
+    }
+
+    if (tool_config) {
+      fullRequestData.tool_config = tool_config
+      logger.info('⚙️ Function calling config forwarded (stream)', {
+        mode: tool_config?.function_calling_config?.mode
+      })
+    }
+
     const streamResponse = await geminiAccountService.generateContentStream(
       client,
-      { model, request: actualRequestData },
+      fullRequestData,
       user_prompt_id,
       effectiveProjectId, // 使用智能决策的项目ID
       req.apiKey?.id, // 使用 API Key ID 作为 session ID

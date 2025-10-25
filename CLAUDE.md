@@ -105,6 +105,7 @@ Claude Relay Service 是一个多平台 AI API 中转服务，支持 **Claude (�
 - ✅ **Droid (Factory.ai)**: Factory.ai API支持
 - ✅ **CCR账户**: CCR凭据支持
 - ✅ **OpenAI兼容**: OpenAI格式转换和Responses格式支持
+- ✅ **Gemini函数调用**: 完整支持Gemini Function Calling（tools、tool_config参数转发）
 
 ### 用户和权限系统
 
@@ -255,6 +256,11 @@ npm run setup  # 自动生成密钥并创建管理员账户
 #### Gemini服务路由
 - `POST /gemini/v1/models/:model:generateContent` - 标准Gemini API格式
 - `POST /gemini/v1/models/:model:streamGenerateContent` - Gemini流式
+- `POST /gemini/v1internal:generateContent` - Gemini内部API（支持函数调用）
+- `POST /gemini/v1internal:streamGenerateContent` - Gemini内部API流式（支持函数调用）
+- `POST /gemini/v1internal:loadCodeAssist` - 加载Code Assist配置
+- `POST /gemini/v1internal:onboardUser` - 用户onboarding
+- `POST /gemini/v1internal:countTokens` - Token计数
 - `GET /gemini/v1/models` - Gemini模型列表
 - 其他Gemini兼容路由（保持向后兼容）
 
@@ -573,7 +579,217 @@ npm run test:pricing-fallback  # 测试价格回退
 
 # 监控
 npm run monitor  # 增强监控脚本
+
+# Gemini函数调用测试
+node scripts/test-gemini-function-calling.js  # 测试函数调用转发
 ```
+
+## Gemini 函数调用使用示例
+
+项目已完整支持 Gemini Function Calling，允许 AI 模型调用外部函数。以下是使用示例：
+
+### 基本用法
+
+```javascript
+// 定义函数
+const tools = [
+  {
+    function_declarations: [
+      {
+        name: 'get_current_weather',
+        description: 'Get the current weather in a given location',
+        parameters: {
+          type: 'object',
+          properties: {
+            location: {
+              type: 'string',
+              description: 'The city and state, e.g. San Francisco, CA'
+            },
+            unit: {
+              type: 'string',
+              enum: ['celsius', 'fahrenheit']
+            }
+          },
+          required: ['location']
+        }
+      }
+    ]
+  }
+]
+
+// 函数调用配置
+const tool_config = {
+  function_calling_config: {
+    mode: 'AUTO'  // 可选: AUTO, ANY, NONE
+  }
+}
+
+// 发送请求（非流式）
+const response = await axios.post('http://localhost:3000/gemini/v1internal:generateContent', {
+  model: 'gemini-2.0-flash-exp',
+  request: {
+    contents: [
+      {
+        role: 'user',
+        parts: [{ text: "What's the weather in Boston?" }]
+      }
+    ]
+  },
+  tools,           // ✅ 函数定义
+  tool_config      // ✅ 函数调用配置
+}, {
+  headers: { 'X-API-Key': 'cr_your_api_key' }
+})
+
+// 检查响应中的函数调用
+const functionCall = response.data?.response?.candidates?.[0]?.content?.parts?.[0]?.functionCall
+if (functionCall) {
+  console.log('函数名:', functionCall.name)
+  console.log('参数:', functionCall.args)
+}
+```
+
+### 流式函数调用
+
+```javascript
+const response = await axios.post(
+  'http://localhost:3000/gemini/v1internal:streamGenerateContent',
+  {
+    model: 'gemini-2.0-flash-exp',
+    request: {
+      contents: [
+        {
+          role: 'user',
+          parts: [{ text: "Check weather in Tokyo" }]
+        }
+      ]
+    },
+    tools,
+    tool_config
+  },
+  {
+    headers: { 'X-API-Key': 'cr_your_api_key' },
+    responseType: 'stream'
+  }
+)
+
+// 处理SSE流
+response.data.on('data', (chunk) => {
+  const lines = chunk.toString().split('\n')
+  for (const line of lines) {
+    if (line.startsWith('data: ')) {
+      const jsonStr = line.substring(6).trim()
+      if (jsonStr && jsonStr !== '[DONE]') {
+        const data = JSON.parse(jsonStr)
+        // 检查函数调用
+        const parts = data?.response?.candidates?.[0]?.content?.parts || []
+        for (const part of parts) {
+          if (part.functionCall) {
+            console.log('函数调用:', part.functionCall)
+          }
+        }
+      }
+    }
+  }
+})
+```
+
+### 函数结果回传
+
+当模型返回函数调用后，你需要执行函数并将结果回传：
+
+```javascript
+// 1. 模型返回函数调用
+const functionCall = {
+  name: 'get_current_weather',
+  args: { location: 'Boston', unit: 'celsius' }
+}
+
+// 2. 执行函数
+const weatherData = await getWeather(functionCall.args.location)
+
+// 3. 构造包含函数结果的新请求
+const followUpRequest = {
+  model: 'gemini-2.0-flash-exp',
+  request: {
+    contents: [
+      // 原始用户消息
+      {
+        role: 'user',
+        parts: [{ text: "What's the weather in Boston?" }]
+      },
+      // 模型的函数调用
+      {
+        role: 'model',
+        parts: [{ functionCall }]
+      },
+      // 函数执行结果
+      {
+        role: 'user',
+        parts: [
+          {
+            functionResponse: {
+              name: 'get_current_weather',
+              response: {
+                temperature: 22,
+                condition: 'sunny',
+                unit: 'celsius'
+              }
+            }
+          }
+        ]
+      }
+    ]
+  },
+  tools,
+  tool_config
+}
+
+// 4. 发送请求获取最终回复
+const finalResponse = await axios.post(
+  'http://localhost:3000/gemini/v1internal:generateContent',
+  followUpRequest,
+  { headers: { 'X-API-Key': 'cr_your_api_key' } }
+)
+```
+
+### 测试脚本
+
+项目提供了完整的测试脚本：
+
+```bash
+# 设置环境变量
+export API_KEY=cr_your_api_key
+export BASE_URL=http://localhost:3000
+
+# 运行测试
+node scripts/test-gemini-function-calling.js
+```
+
+### 支持的端点
+
+以下端点均支持函数调用参数（`tools` 和 `tool_config`）：
+
+- `POST /gemini/v1internal:generateContent` - 非流式
+- `POST /gemini/v1internal:streamGenerateContent` - 流式
+- `POST /gemini/v1beta/models/:modelName:generateContent` - v1beta非流式
+- `POST /gemini/v1beta/models/:modelName:streamGenerateContent` - v1beta流式
+
+### 函数调用模式
+
+`tool_config.function_calling_config.mode` 支持以下模式：
+
+- **AUTO** (默认): 模型自动决定是否调用函数
+- **ANY**: 强制模型必须调用至少一个函数
+- **NONE**: 禁用函数调用，仅返回文本响应
+
+### 注意事项
+
+1. **账户支持**: 确保你的 Gemini 账户支持函数调用功能
+2. **模型选择**: 推荐使用 `gemini-2.0-flash-exp` 或更新的模型
+3. **参数验证**: 函数定义必须符合 JSON Schema 规范
+4. **多轮对话**: 函数调用通常需要多轮对话（用户消息 → 函数调用 → 函数结果 → 最终回复）
+5. **错误处理**: 注意处理函数调用失败和超时情况
 
 # important-instruction-reminders
 

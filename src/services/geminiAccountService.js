@@ -1399,6 +1399,21 @@ async function generateContent(
     }
   }
 
+  // ✅ 支持函数调用：添加 tools 和 tool_config
+  if (requestData.tools) {
+    request.request.tools = requestData.tools
+    logger.info('🔧 Function calling enabled - tools added to request', {
+      toolsCount: requestData.tools.length
+    })
+  }
+
+  if (requestData.tool_config) {
+    request.request.tool_config = requestData.tool_config
+    logger.info('⚙️ Function calling config added to request', {
+      mode: requestData.tool_config?.function_calling_config?.mode
+    })
+  }
+
   // 只有当 userPromptId 存在时才添加
   if (userPromptId) {
     request.user_prompt_id = userPromptId
@@ -1413,7 +1428,9 @@ async function generateContent(
     model: requestData.model,
     userPromptId,
     projectId,
-    sessionId
+    sessionId,
+    hasTools: !!requestData.tools,
+    hasToolConfig: !!requestData.tool_config
   })
 
   // 添加详细的请求日志
@@ -1477,6 +1494,21 @@ async function generateContentStream(
     }
   }
 
+  // ✅ 支持函数调用：添加 tools 和 tool_config
+  if (requestData.tools) {
+    request.request.tools = requestData.tools
+    logger.info('🔧 Function calling enabled (stream) - tools added to request', {
+      toolsCount: requestData.tools.length
+    })
+  }
+
+  if (requestData.tool_config) {
+    request.request.tool_config = requestData.tool_config
+    logger.info('⚙️ Function calling config added to request (stream)', {
+      mode: requestData.tool_config?.function_calling_config?.mode
+    })
+  }
+
   // 只有当 userPromptId 存在时才添加
   if (userPromptId) {
     request.user_prompt_id = userPromptId
@@ -1491,7 +1523,9 @@ async function generateContentStream(
     model: requestData.model,
     userPromptId,
     projectId,
-    sessionId
+    sessionId,
+    hasTools: !!requestData.tools,
+    hasToolConfig: !!requestData.tool_config
   })
 
   const axiosConfig = {
