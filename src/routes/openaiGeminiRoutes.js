@@ -19,6 +19,30 @@ function generateSessionHash(req) {
   return crypto.createHash('sha256').update(sessionData).digest('hex')
 }
 
+// 转换 Gemini finishReason 到 OpenAI 格式
+function convertFinishReason(geminiFinishReason, hasToolCalls = false) {
+  if (!geminiFinishReason) {
+    return 'stop'
+  }
+
+  switch (geminiFinishReason.toUpperCase()) {
+    case 'STOP':
+      return hasToolCalls ? 'tool_calls' : 'stop'
+    case 'MAX_TOKENS':
+    case 'MAXLENGTH':
+      return 'length'
+    case 'SAFETY':
+    case 'RECITATION':
+      return 'content_filter'
+    case 'MALFORMED_FUNCTION_CALL':
+      // Gemini 特有的错误，映射为 stop（OpenAI 没有对应的值）
+      logger.warn('Gemini returned MALFORMED_FUNCTION_CALL, mapping to stop')
+      return 'stop'
+    default:
+      return 'stop'
+  }
+}
+
 // 检查 API Key 权限
 function checkPermissions(apiKeyData, requiredPermission = 'gemini') {
   const permissions = apiKeyData.permissions || 'all'
@@ -142,6 +166,14 @@ function convertGeminiResponseToOpenAI(geminiResponse, model, stream = false) {
       const candidate = actualResponse.candidates[0]
       const parts = candidate.content?.parts || []
 
+      // 记录原始响应结构（仅 debug 模式）
+      logger.debug('Gemini response structure', {
+        finishReason: candidate.finishReason,
+        partsCount: parts.length,
+        hasContent: !!candidate.content,
+        partTypes: parts.map((p) => Object.keys(p).join(','))
+      })
+
       // 提取文本内容和函数调用
       let content = ''
       const toolCalls = []
@@ -160,16 +192,39 @@ function convertGeminiResponseToOpenAI(geminiResponse, model, stream = false) {
               arguments: JSON.stringify(part.functionCall.args || {})
             }
           })
+        } else {
+          // 记录未识别的 part 类型
+          logger.debug('Unrecognized part type', {
+            partKeys: Object.keys(part)
+          })
         }
       }
 
-      const finishReason = candidate.finishReason?.toLowerCase() || 'stop'
+      logger.debug('Conversion result', {
+        hasContent: content.length > 0,
+        toolCallsCount: toolCalls.length,
+        geminiFinishReason: candidate.finishReason
+      })
+
+      // 转换 Gemini finishReason 到 OpenAI 格式
+      const finishReason = convertFinishReason(candidate.finishReason, toolCalls.length > 0)
 
       // 计算 token 使用量
       const usage = actualResponse.usageMetadata || {
         promptTokenCount: 0,
         candidatesTokenCount: 0,
         totalTokenCount: 0
+      }
+
+      // 如果 usageMetadata 存在但 candidatesTokenCount 为 undefined，记录调试信息
+      if (
+        actualResponse.usageMetadata &&
+        actualResponse.usageMetadata.candidatesTokenCount === undefined
+      ) {
+        logger.debug('Gemini response missing candidatesTokenCount', {
+          usageMetadata: actualResponse.usageMetadata,
+          hasFunctionCall: toolCalls.length > 0
+        })
       }
 
       const message = {
@@ -197,9 +252,9 @@ function convertGeminiResponseToOpenAI(geminiResponse, model, stream = false) {
           }
         ],
         usage: {
-          prompt_tokens: usage.promptTokenCount,
-          completion_tokens: usage.candidatesTokenCount,
-          total_tokens: usage.totalTokenCount
+          prompt_tokens: usage.promptTokenCount || 0,
+          completion_tokens: usage.candidatesTokenCount || 0,
+          total_tokens: usage.totalTokenCount || 0
         }
       }
     } else {
@@ -532,7 +587,10 @@ router.post('/v1/chat/completions', authenticateApiKey, async (req, res) => {
               if (data.response?.candidates && data.response.candidates.length > 0) {
                 const candidate = data.response.candidates[0]
                 const parts = candidate.content?.parts || []
-                const { finishReason } = candidate
+                const { finishReason: geminiFinishReason } = candidate
+
+                // 检查是否有函数调用
+                const hasFunctionCall = parts.some((part) => part.functionCall)
 
                 // 处理所有 parts（可能包含文本和函数调用）
                 for (const part of parts) {
@@ -579,7 +637,13 @@ router.post('/v1/chat/completions', authenticateApiKey, async (req, res) => {
                 }
 
                 // 如果结束了，发送 finish_reason 和 usage
-                if (finishReason === 'STOP') {
+                if (geminiFinishReason) {
+                  // 转换 finish_reason
+                  const openaiFinishReason = convertFinishReason(
+                    geminiFinishReason,
+                    hasFunctionCall
+                  )
+
                   // 发送结束标记
                   const finishChunk = {
                     id: `chatcmpl-${Date.now()}`,
@@ -590,7 +654,7 @@ router.post('/v1/chat/completions', authenticateApiKey, async (req, res) => {
                       {
                         index: 0,
                         delta: {},
-                        finish_reason: 'stop'
+                        finish_reason: openaiFinishReason
                       }
                     ]
                   }
@@ -607,7 +671,7 @@ router.post('/v1/chat/completions', authenticateApiKey, async (req, res) => {
                         {
                           index: 0,
                           delta: {},
-                          finish_reason: 'stop'
+                          finish_reason: openaiFinishReason
                         }
                       ],
                       usage: {
@@ -717,6 +781,14 @@ router.post('/v1/chat/completions', authenticateApiKey, async (req, res) => {
 
       // 转换为 OpenAI 格式并返回
       const openaiResponse = convertGeminiResponseToOpenAI(response, model, false)
+
+      // 如果是 MALFORMED_FUNCTION_CALL，记录警告
+      if (response.response?.candidates?.[0]?.finishReason === 'MALFORMED_FUNCTION_CALL') {
+        logger.warn('Gemini returned MALFORMED_FUNCTION_CALL - function calling failed', {
+          model,
+          inputTokens: openaiResponse.usage?.prompt_tokens
+        })
+      }
 
       // 记录使用统计
       if (openaiResponse.usage) {

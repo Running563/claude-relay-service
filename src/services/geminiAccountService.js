@@ -1487,7 +1487,7 @@ async function generateContentStream(
     }
   }
 
-  // ✅ 支持函数调用：添加 tools 和 tool_config
+  // 支持函数调用：添加 tools 和 tool_config
   if (requestData.tools) {
     request.request.tools = requestData.tools
   }
