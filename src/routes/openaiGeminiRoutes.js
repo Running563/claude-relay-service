@@ -153,7 +153,7 @@ function convertGeminiResponseToOpenAI(geminiResponse, model, stream = false) {
         } else if (part.functionCall) {
           // 转换 Gemini functionCall 到 OpenAI tool_calls 格式
           toolCalls.push({
-            id: `call_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+            id: `call_${crypto.randomUUID()}`,
             type: 'function',
             function: {
               name: part.functionCall.name,
@@ -312,9 +312,14 @@ router.post('/v1/chat/completions', authenticateApiKey, async (req, res) => {
       geminiRequestBody.systemInstruction = { parts: [{ text: systemInstruction }] }
     }
 
-    // ✅ 支持函数调用：转换 OpenAI tools 格式到 Gemini 格式
+    // 支持函数调用：转换 OpenAI tools 格式到 Gemini 格式
     let geminiTools = null
     let geminiToolConfig = null
+
+    // 参数验证
+    if (tools && !Array.isArray(tools)) {
+      return res.status(400).json({ error: 'tools must be an array' })
+    }
 
     if (tools && Array.isArray(tools) && tools.length > 0) {
       // 转换 OpenAI tools 格式到 Gemini function_declarations 格式
@@ -333,9 +338,6 @@ router.post('/v1/chat/completions', authenticateApiKey, async (req, res) => {
 
       if (functionDeclarations.length > 0) {
         geminiTools = [{ function_declarations: functionDeclarations }]
-        logger.info('🔧 Converted OpenAI tools to Gemini format', {
-          toolsCount: functionDeclarations.length
-        })
       }
     }
 
@@ -365,8 +367,6 @@ router.post('/v1/chat/completions', authenticateApiKey, async (req, res) => {
       if (allowedFunctionNames) {
         geminiToolConfig.function_calling_config.allowed_function_names = allowedFunctionNames
       }
-
-      logger.info('⚙️ Set function calling mode', { mode, allowedFunctionNames })
     }
 
     // 生成会话哈希用于粘性会话
@@ -548,7 +548,7 @@ router.post('/v1/chat/completions', authenticateApiKey, async (req, res) => {
                     delta.tool_calls = [
                       {
                         index: 0,
-                        id: `call_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                        id: `call_${crypto.randomUUID()}`,
                         type: 'function',
                         function: {
                           name: part.functionCall.name,

@@ -599,18 +599,6 @@ async function handleGenerateContent(req, res) {
 
     const { project, user_prompt_id, request: requestData, tools, tool_config } = req.body
 
-    // 🔍 调试：记录从请求体提取的参数
-    logger.info('🔍 Extracted from req.body', {
-      hasProject: !!project,
-      hasUserPromptId: !!user_prompt_id,
-      hasRequestData: !!requestData,
-      hasTools: !!tools,
-      hasToolConfig: !!tool_config,
-      toolsType: typeof tools,
-      toolConfigType: typeof tool_config,
-      reqBodyKeys: Object.keys(req.body)
-    })
-
     // 从路径参数或请求体中获取模型名
     const model = req.body.model || req.params.modelName || 'gemini-2.5-flash'
     const sessionHash = sessionHelper.generateSessionHash(req.body)
@@ -705,24 +693,11 @@ async function handleGenerateContent(req, res) {
     // 添加函数调用参数（如果存在）
     if (tools) {
       fullRequestData.tools = tools
-      logger.info('🔧 Function calling tools forwarded', { toolsCount: tools.length })
     }
 
     if (tool_config) {
       fullRequestData.tool_config = tool_config
-      logger.info('⚙️ Function calling config forwarded', {
-        mode: tool_config?.function_calling_config?.mode
-      })
     }
-
-    // 🔍 调试：记录完整的请求数据结构
-    logger.info('🔍 Full request data structure', {
-      hasTools: !!fullRequestData.tools,
-      hasToolConfig: !!fullRequestData.tool_config,
-      toolsCount: fullRequestData.tools?.length,
-      toolConfigMode: fullRequestData.tool_config?.function_calling_config?.mode,
-      fullRequestData: JSON.stringify(fullRequestData)
-    })
 
     const response = await geminiAccountService.generateContent(
       client,
@@ -799,18 +774,6 @@ async function handleStreamGenerateContent(req, res) {
     }
 
     const { project, user_prompt_id, request: requestData, tools, tool_config } = req.body
-
-    // 🔍 调试：记录从请求体提取的参数
-    logger.info('🔍 Extracted from req.body', {
-      hasProject: !!project,
-      hasUserPromptId: !!user_prompt_id,
-      hasRequestData: !!requestData,
-      hasTools: !!tools,
-      hasToolConfig: !!tool_config,
-      toolsType: typeof tools,
-      toolConfigType: typeof tool_config,
-      reqBodyKeys: Object.keys(req.body)
-    })
 
     // 从路径参数或请求体中获取模型名
     const model = req.body.model || req.params.modelName || 'gemini-2.5-flash'
@@ -917,14 +880,10 @@ async function handleStreamGenerateContent(req, res) {
     // 添加函数调用参数（如果存在）
     if (tools) {
       fullRequestData.tools = tools
-      logger.info('🔧 Function calling tools forwarded (stream)', { toolsCount: tools.length })
     }
 
     if (tool_config) {
       fullRequestData.tool_config = tool_config
-      logger.info('⚙️ Function calling config forwarded (stream)', {
-        mode: tool_config?.function_calling_config?.mode
-      })
     }
 
     const streamResponse = await geminiAccountService.generateContentStream(

@@ -1399,19 +1399,13 @@ async function generateContent(
     }
   }
 
-  // ✅ 支持函数调用：添加 tools 和 tool_config
+  // 支持函数调用：添加 tools 和 tool_config
   if (requestData.tools) {
     request.request.tools = requestData.tools
-    logger.info('🔧 Function calling enabled - tools added to request', {
-      toolsCount: requestData.tools.length
-    })
   }
 
   if (requestData.tool_config) {
     request.request.tool_config = requestData.tool_config
-    logger.info('⚙️ Function calling config added to request', {
-      mode: requestData.tool_config?.function_calling_config?.mode
-    })
   }
 
   // 只有当 userPromptId 存在时才添加
@@ -1424,19 +1418,10 @@ async function generateContent(
     request.project = projectId
   }
 
-  logger.info('🤖 generateContent API调用开始', {
+  logger.info('generateContent API调用', {
     model: requestData.model,
-    userPromptId,
     projectId,
-    sessionId,
-    hasTools: !!requestData.tools,
-    hasToolConfig: !!requestData.tool_config
-  })
-
-  // 添加详细的请求日志
-  logger.info('📦 generateContent 请求详情', {
-    url: `${CODE_ASSIST_ENDPOINT}/${CODE_ASSIST_API_VERSION}:generateContent`,
-    requestBody: JSON.stringify(request, null, 2)
+    hasTools: !!requestData.tools
   })
 
   const axiosConfig = {
@@ -1519,13 +1504,10 @@ async function generateContentStream(
     request.project = projectId
   }
 
-  logger.info('🌊 streamGenerateContent API调用开始', {
+  logger.info('streamGenerateContent API调用', {
     model: requestData.model,
-    userPromptId,
     projectId,
-    sessionId,
-    hasTools: !!requestData.tools,
-    hasToolConfig: !!requestData.tool_config
+    hasTools: !!requestData.tools
   })
 
   const axiosConfig = {

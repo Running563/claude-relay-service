@@ -279,24 +279,11 @@ async function handleStandardGenerateContent(req, res) {
     // 添加函数调用参数（如果存在）
     if (tools) {
       fullRequestData.tools = tools
-      logger.info('🔧 Function calling tools forwarded', { toolsCount: tools.length })
     }
 
     if (tool_config) {
       fullRequestData.tool_config = tool_config
-      logger.info('⚙️ Function calling config forwarded', {
-        mode: tool_config?.function_calling_config?.mode
-      })
     }
-
-    logger.info('🤖 generateContent API调用开始', {
-      model,
-      userPromptId,
-      projectId: effectiveProjectId,
-      sessionId: req.apiKey?.id,
-      hasTools: !!tools,
-      hasToolConfig: !!tool_config
-    })
 
     // 调用内部 API（cloudcode-pa）
     const response = await geminiAccountService.generateContent(
@@ -531,24 +518,11 @@ async function handleStandardStreamGenerateContent(req, res) {
     // 添加函数调用参数（如果存在）
     if (tools) {
       fullRequestData.tools = tools
-      logger.info('🔧 Function calling tools forwarded (stream)', { toolsCount: tools.length })
     }
 
     if (tool_config) {
       fullRequestData.tool_config = tool_config
-      logger.info('⚙️ Function calling config forwarded (stream)', {
-        mode: tool_config?.function_calling_config?.mode
-      })
     }
-
-    logger.info('🌊 streamGenerateContent API调用开始', {
-      model,
-      userPromptId,
-      projectId: effectiveProjectId,
-      sessionId: req.apiKey?.id,
-      hasTools: !!tools,
-      hasToolConfig: !!tool_config
-    })
 
     // 调用内部 API（cloudcode-pa）的流式接口
     const streamResponse = await geminiAccountService.generateContentStream(
